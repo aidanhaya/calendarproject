@@ -1,0 +1,30 @@
+# sensitive files
+credentials.json
+token.json
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+env/
+*.env
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyCharm/IDE files
+/.idea/
+/*.iml
+/workspace.xml
+/shelf/
+/httpRequests/
+/dataSources/
+/dataSources.local.xml
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak
+*.swp
