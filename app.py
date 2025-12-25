@@ -6,13 +6,10 @@ from time_range import TimeRange
 
 # Algorithm to compute a schedule for given tasks, conflicts, start time, end time for each day
 # Returns a list of all event items to be imported into Google Calendar
-def schedule(tasks, conflicts, start_date, end_date, start_time, end_time):
+def schedule(tasks, conflicts, break_time, start_date, end_date, start_time, end_time):
     events = []  # final array of all Events
-    # Sort conflicts by time (earliest conflict is first)
-    conflicts.sort(key=lambda event: event.start)
-
     # Sort tasks by priority (highest priority is first)
-    tasks.sort(key=lambda event: event.priority)
+    tasks.sort(key=lambda item: item.priority, reverse=True)
 
     time_range_list = []  # array of time_range objects
 
@@ -26,21 +23,95 @@ def schedule(tasks, conflicts, start_date, end_date, start_time, end_time):
     conflict_count = 0
 
     for i in range(break_points):
+        # Next is conflict
         if (len(conflicts) > conflict_count) and (
                 conflicts[conflict_count].get_start_dt() <= dt.datetime.combine(current_day, end_time)):
             time_range_list.append(TimeRange(start_dt, conflicts[conflict_count].get_start_dt()))
             start_dt = conflicts[conflict_count].get_end_dt()
             conflict_count += 1
+        # Next is end of day
         else:
             time_range_list.append(TimeRange(start_dt, dt.datetime.combine(current_day, end_time)))
             current_day += dt.timedelta(days=1)
             start_dt = dt.datetime.combine(current_day, start_time)
 
-    for time_range in time_range_list:
-        time_range.print_time_range()
+
+    break_time_original = break_time
+    # Cut break time if schedules do not fit
+    while True:
+        events = []
+        all_tasks_filled = True
+        time_ranges = time_range_list.copy()
+
+        # Attempt to fill every task into the schedule
+        for i in range(len(tasks)):
+            task = tasks[i]
+
+            # Task duration in minutes + break
+            duration = task.duration
+            task_duration = task.duration.hour*60 + task.duration.minute + break_time
+            # Attempt to fill task into any time slot
+            # If fails, make all_tasked_failed false. If success, move onto next task
+            task_filled = False
+            for time in time_ranges:
+                if TimeRange.get_duration(time) >= task_duration:
+                    event = tasks[i]
+
+                    event.start = time.start
+
+                    # Calculate end time for event
+                    duration_delta = dt.timedelta(hours=duration.hour, minutes=duration.minute)
+                    event.end = event.start + duration_delta
+
+                    TimeRange.remove_time(time, task_duration)
+
+                    events.append(event)
+                    task_filled = True
+
+                    break
+
+            if not task_filled:
+                all_tasks_filled = False
+
+        # If every task was scheduled, break out of loop. otherwise, cut break by half
+        if all_tasks_filled:
+            break
+
+        # If break time is already 0, send error and give the best effort scheduling other events
+        if break_time == 0:
+            st.error('ERROR: Impossible to schedule all events with given time parameters.')
+            break
+
+        break_time = break_time // 2
+
+    if break_time < break_time_original:
+        st.warning('Break time reduced to ' + str(break_time) + ' min to fit all events.')
+
+    print('---')
+    for event in events:
+        print(event.print_event())
 
     return events
 
+# Prints current tasks and conflicts, allows to remove tasks by clicking button
+def print_task_conflicts(tasks, conflicts):
+    col1, col2 = st.columns(2, gap='large')
+
+    with col1:
+        # Allows to remove tasks by clicking on their button
+        st.subheader("Current Tasks (click to remove):")
+        for i, event in enumerate(tasks):
+            if st.button(f"Task #{i + 1}: {event.print_event()}", key=f"task_{i}"):
+                tasks.pop(i)
+                st.rerun()
+
+    with col2:
+        # Allows to remove conflicts by clicking on their button
+        st.subheader("Current Conflicts (click to remove):")
+        for i, event in enumerate(conflicts):
+            if st.button(f"Conflict #{i + 1}: {event.print_event()}", key=f"conflict_{i}"):
+                conflicts.pop(i)
+                st.rerun()
 
 def main():
     # Saves list of tasks
@@ -128,29 +199,14 @@ def main():
                                     (i != num_days) or (event_end_dt.time() <= end_time)):
                                 conflicts.append(
                                     Event(name, everyday, start=event_start_dt + dt.timedelta(days=i), end=event_end_dt
-                                         + dt.timedelta(days=i, hours=duration.hour, minutes=duration.minute), fixed=True))
+                                         + dt.timedelta(days=i), fixed=True))
                 elif event_start_dt < start_dt:
                     st.write("Start time is before specified time range")
                 else:
                     st.write("End time is after specified time range")
 
-    col1, col2 = st.columns(2, gap='large')
-
-    with col1:
-        # Allows to remove tasks by clicking on their button
-        st.subheader("Current Tasks (click to remove):")
-        for i, event in enumerate(tasks):
-            if st.button(f"Task #{i + 1}: {event.print_event()}", key=f"task_{i}"):
-                tasks.pop(i)
-                st.rerun()
-
-    with col2:
-        # Allows to remove conflicts by clicking on their button
-        st.subheader("Current Conflicts (click to remove):")
-        for i, event in enumerate(conflicts):
-            if st.button(f"Conflict #{i + 1}: {event.print_event()}", key=f"conflict_{i}"):
-                conflicts.pop(i)
-                st.rerun()
+    # Prints current tasks and conflicts, allows user to remove by clicking
+    print_task_conflicts(tasks, conflicts)
 
     st.divider()
 
@@ -159,11 +215,14 @@ def main():
 
     # Import to Google Calendar
     if st.button("Add to Google Calendar", type='primary'):
-        events = schedule(tasks, conflicts, start_date, end_date, start_time, end_time)
-        st.toast("Event added to Google Calendar!", icon='📅')
+        events = schedule(tasks, conflicts, break_time, start_date, end_date, start_time, end_time)
+        st.toast("Events added to Google Calendar!", icon='📅')
 
-        #for event in events:
-           #gc.create_event(service, event)
+        for event in events:
+           gc.create_event(service, event)
+
+        for conflict in conflicts:
+            gc.create_event(service, conflict)
 
 if __name__ == "__main__":
     main()

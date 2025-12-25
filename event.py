@@ -1,5 +1,3 @@
-import datetime as dt
-
 # Event
 class Event:
     def __init__(self, title, everyday=False, priority=None, duration=None, start=None, end=None, fixed=False):
@@ -20,31 +18,36 @@ class Event:
         else:
             self.duration = duration
             self.priority = priority
+            self.start = None
+            self.end = None
 
     def print_event(self):
-        if self.fixed:
-            return (
-                f"{self.title}  \n"
-                f"Start: {self.start}  \n"
-                f"End: {self.end}"
-            )
-        else:
+        # Print duration if task (not fixed conflict)
+        if not self.fixed:
             return (
                 f"{self.title}  \n"
                 f"Priority: {self.priority}\n"
                 f"Duration: {self.duration}"
             )
 
+        else:
+            return (
+            f"{self.title}  \n"
+            f"Start: {self.start}  \n"
+            f"End: {self.end}"
+            )
+
+
     # Exports event to be created in Google Calendar
     def __call__(self):
         event = {
             'summary': self.title,
             'start': {
-                'dateTime': self.start,
+                'dateTime': self.start.isoformat(),
                 'timeZone': 'America/Los_Angeles',
             },
             'end': {
-                'dateTime': self.end,
+                'dateTime': self.end.isoformat(),
                 'timeZone': 'America/Los_Angeles',
             },
         }
